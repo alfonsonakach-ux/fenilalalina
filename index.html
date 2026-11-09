@@ -160,6 +160,17 @@ nav.tabs button.on .ic{background:var(--rose-l)}
 .mealchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
 .mealchips::-webkit-scrollbar{display:none}
 .check.sel .box{background:var(--rose-d);border-color:var(--rose-d)}
+.kcal{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.bar.lav{background:var(--lav);height:12px;margin:8px 0 0}
+.bar.lav .fill{background:linear-gradient(90deg,var(--lav-d),var(--rose-d))}
+.banner{display:flex;align-items:center;gap:12px;background:var(--lav)}
+.banner .name{color:var(--lav-d)}
+.switchrow{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;padding:12px 0 4px;text-align:left;color:var(--ink);font:inherit}
+.sw2{width:52px;height:32px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:.2s}
+.sw2::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
+.sw2.on{background:var(--mint-d)}
+.sw2.on::after{left:23px}
+.evtypes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .report{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:15px;line-height:1.5;background:var(--bg);border-radius:16px;padding:14px 16px;margin:4px 0 0}
 @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 </style>
@@ -208,13 +219,16 @@ var RAW={
  g:[['Mango','1 taza',40],['Naranja','1 pieza',40],['Calabacita','1 taza',40],['Nopal','1 taza',40],['Uvas','1 taza',30],['Fresas','1 taza',30],['Jitomate','1 pieza',30],['Chayote','1 taza',30],['Cebolla','1 taza',30],['Sandía','1 taza',25],['Jícama','1 taza',25],['Piña','1 taza',20],['Zanahoria','1 pieza',20],['Pimiento','1 pieza',20],['Papaya','1 taza',15],['Pera','1 pieza',15],['Pepino','1 taza',15],['Manzana','1 pieza',10],['Lechuga','1 taza',10],['Pan bajo en proteína','1 rebanada',15],['Pasta baja en proteína','1 taza',25],['Aceite, margarina parve','1 cda',0],['Azúcar, miel, mermelada','1 cda',0],['Fórmula médica sin Phe','1 toma',0]]
 };
 var BASE=[];
-['r','y','g'].forEach(function(c){RAW[c].forEach(function(x,i){BASE.push({id:'b_'+c+i,name:x[0],portion:x[1],phe:x[2],color:c});});});
+var KCAL={'Pollo, carne, pescado':200,'Tofu':80,'Leche':150,'Yogur':150,'Frijol, lenteja, garbanzo':115,'Pasta normal':220,'Cacahuate':160,'Huevo':70,'Almendras, nueces':165,'Queso amarillo':70,'Avena':80,'Pan normal':80,'Chocolate':160,'Refresco light (aspartame)':0,
+ 'Arroz':205,'Papa':160,'Elote':90,'Chícharo':60,'Espinaca cocida':40,'Brócoli cocido':55,'Aguacate':120,'Camote':105,'Champiñones':30,'Tortilla de maíz':60,'Ejote':35,'Coliflor':30,'Plátano':105,'Guayaba':40,'Pasas':120,
+ 'Mango':100,'Naranja':60,'Calabacita':25,'Nopal':20,'Uvas':105,'Fresas':50,'Jitomate':22,'Chayote':25,'Cebolla':65,'Sandía':45,'Jícama':45,'Piña':80,'Zanahoria':25,'Pimiento':30,'Papaya':60,'Pera':100,'Pepino':15,'Manzana':95,'Lechuga':5,'Pan bajo en proteína':70,'Pasta baja en proteína':200,'Aceite, margarina parve':110,'Azúcar, miel, mermelada':55,'Fórmula médica sin Phe':0};
+['r','y','g'].forEach(function(c){RAW[c].forEach(function(x,i){BASE.push({id:'b_'+c+i,name:x[0],portion:x[1],phe:x[2],kcal:KCAL[x[0]]!=null?KCAL[x[0]]:null,color:c});});});
 
 /* ---------- Estado ---------- */
 var KEY='miGuiaPKU.v1';
 function defaultState(){return{
   version:1,
-  settings:{pheLimit:null,formulaDoses:4,rangeMin:120,rangeMax:360,meds:[
+  settings:{pheLimit:null,formulaDoses:4,rangeMin:120,rangeMax:360,labEvery:null,exOn:false,exMg:null,kcalOn:false,kcalGoal:null,formulaKcal:null,meds:[
     {id:'m1',name:'Levetiracetam',dose:'750 mg',when:'Mañana'},
     {id:'m2',name:'Levetiracetam',dose:'500 mg',when:'Noche'},
     {id:'m3',name:'Ácido fólico',dose:'',when:''}]},
@@ -260,14 +274,25 @@ function byDate(a,b){return a.date<b.date?-1:a.date>b.date?1:0;}
 var toastT;
 function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('show');},2300);}
 
-function emptyDay(){return{foods:[],formula:[],meds:{},water:0,sym:{},sleep:null,vitals:[]};}
+function emptyDay(){return{foods:[],formula:[],meds:{},water:0,sym:{},sleep:null,vitals:[],events:[]};}
 function getDay(k,create){var d=state.days[k];if(!d){d=emptyDay();if(create)state.days[k]=d;}
-  d.foods=d.foods||[];d.formula=d.formula||[];d.meds=d.meds||{};d.water=d.water||0;d.sym=d.sym||{};d.vitals=d.vitals||[];if(d.sleep===undefined)d.sleep=null;return d;}
+  d.foods=d.foods||[];d.formula=d.formula||[];d.meds=d.meds||{};d.water=d.water||0;d.sym=d.sym||{};d.vitals=d.vitals||[];d.events=d.events||[];if(d.sleep===undefined)d.sleep=null;return d;}
+function foodKcal(f){if(f.kcal!=null)return Number(f.kcal)||0;var b=f.fid?findFood(f.fid):null;if(!b)b=BASE.filter(function(x){return x.name===f.name&&x.portion===f.portion;})[0];return b&&b.kcal!=null?b.kcal:0;}
+function dayKcal(d){var s=state.settings,fk=Number(s.formulaKcal)||0,t=d.foods.reduce(function(a,f){return a+foodKcal(f)*(Number(f.qty)||0);},0);for(var i=0;i<s.formulaDoses;i++)if(d.formula[i])t+=fk;return t;}
+function exOn(){var s=state.settings;return !!(s.exOn&&Number(s.exMg)>0);}
+function toEx(mg){return mg/Number(state.settings.exMg);}
+function foodMeta(x){var p=[esc(x.portion),'~'+fmtNum(x.phe)+' mg Phe'];if(exOn())p.push('≈ '+fmtNum(toEx(x.phe),1)+' int.');if(state.settings.kcalOn){var kc=foodKcal(x);if(kc)p.push('~'+fmtNum(kc)+' kcal');}return p.join(' · ');}
+function qtyExtra(f,q){var p=[];if(exOn())p.push('≈ '+fmtNum(toEx(f.phe*q),1)+' intercambios');if(state.settings.kcalOn){var kc=foodKcal(f);if(kc)p.push('~'+fmtNum(Math.round(kc*q))+' kcal');}return p.join(' · ');}
+var EVT=['Crisis / convulsión','Ausencia','Aura o sensación rara','Otro'],evType=EVT[0];
+function evText(e){return esc([e.time,e.type,e.dur].filter(Boolean).join(' · '));}
+function addDays(k,n){var x=parseKey(k);x.setDate(x.getDate()+n);return keyOf(x);}
+function daysBetween(a,b){return Math.round((parseKey(b)-parseKey(a))/864e5);}
+function labStatus(){var ev=parseInt(state.settings.labEvery,10);if(!(ev>0))return null;var labs=state.labs.slice().sort(byDate),last=labs[labs.length-1];if(!last)return{none:true,ev:ev};var next=addDays(last.date,ev);return{next:next,left:daysBetween(todayKey(),next),ev:ev};}
 var SYMS=[['mareo','Mareo'],['palp','Palpitaciones'],['cans','Cansancio']],LV=['Nada','Leve','Medio','Fuerte'];
 function hasSym(d){return !!d.sym&&Object.keys(d.sym).some(function(x){return d.sym[x]!=null;});}
 function vitText(v){var p=[new Date(v.t).toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})];if(v.pulse)p.push('Pulso '+fmtNum(v.pulse));if(v.sys&&v.dia)p.push('Presión '+fmtNum(v.sys)+'/'+fmtNum(v.dia));return esc(p.join(' · '));}
 function dayPhe(d){return d.foods.reduce(function(s,f){return s+(Number(f.phe)||0)*(Number(f.qty)||0);},0);}
-function dayHasData(d){return d&&((d.vitals&&d.vitals.length)||hasSym(d)||d.sleep!=null||(d.foods&&d.foods.length)||(d.formula&&d.formula.some(Boolean))||(d.meds&&Object.keys(d.meds).some(function(k){return d.meds[k];}))||d.water);}
+function dayHasData(d){return d&&((d.events&&d.events.length)||(d.vitals&&d.vitals.length)||hasSym(d)||d.sleep!=null||(d.foods&&d.foods.length)||(d.formula&&d.formula.some(Boolean))||(d.meds&&Object.keys(d.meds).some(function(k){return d.meds[k];}))||d.water);}
 function allFoods(){return BASE.concat(state.customFoods.map(function(c){return Object.assign({custom:true},c);}));}
 function findFood(id){return allFoods().filter(function(f){return f.id===id;})[0];}
 function validRange(){var s=state.settings;return isFinite(s.rangeMin)&&isFinite(s.rangeMax)&&s.rangeMin!==null&&s.rangeMax!==null&&Number(s.rangeMin)<Number(s.rangeMax);}
@@ -297,9 +322,14 @@ function viewHoy(){
   else if(pct<1)msg='Vas muy bien. Te quedan ~'+fmtNum(lim-total)+' mg para hoy.';
   else msg='Llegaste a tu límite de hoy. Tu fórmula sin Phe te sigue acompañando 💛';
 
-  var h='<div class="card"><div class="hero-top"><div><div class="label">Phe de hoy</div><div class="big">'+fmtNum(total)+'<span class="unit"> mg</span></div></div>'+(lim?'<div class="limit">de '+fmtNum(lim)+' mg</div>':'')+'</div>';
+  var h='',ls=labStatus();
+  if(ls&&(ls.none||ls.left<=2)){var lt=ls.none?'Cuando tengas tu primer análisis, regístralo aquí.':ls.left<0?'Ya te toca tu análisis de Phe.':ls.left===0?'Hoy te toca tu análisis de Phe.':'Tu análisis de Phe toca en '+ls.left+' día'+(ls.left===1?'':'s')+'.';
+    h+='<div class="card banner"><div class="grow"><div class="name">🩸 '+lt+'</div><div class="meta">Cada '+ls.ev+' días, según tu clínica.</div></div><button class="add-btn" data-a="tab" data-t="analisis">Ir</button></div>';}
+  h+='<div class="card"><div class="hero-top"><div><div class="label">Phe de hoy</div><div class="big">'+fmtNum(total)+'<span class="unit"> mg</span></div></div>'+(lim?'<div class="limit">de '+fmtNum(lim)+' mg</div>':'')+'</div>';
   if(lim)h+='<div class="bar"><div class="fill'+(total>=lim?' full':'')+'" style="width:'+(pct*100).toFixed(1)+'%"></div></div>';
+  if(exOn())h+='<div class="meta">≈ '+fmtNum(toEx(total),1)+' intercambios'+(lim?' de '+fmtNum(toEx(lim),1):'')+'</div>';
   h+='<p class="msg">'+msg+'</p>';
+  if(s.kcalOn){var kc=Math.round(dayKcal(d)),kg=Number(s.kcalGoal)||0;h+='<div class="kcal"><div class="hero-top"><div class="label">Calorías de hoy</div><div class="limit" style="padding:0"><b style="color:var(--ink)">~'+fmtNum(kc)+'</b>'+(kg?' de '+fmtNum(kg):'')+' kcal</div></div>'+(kg?'<div class="bar lav"><div class="fill" style="width:'+Math.min(100,kc/kg*100).toFixed(1)+'%"></div></div>':'')+'</div>';}
   if(!lim)h+='<button class="btn soft" data-a="settings">Escribir mi límite</button>';
   h+='<button class="btn" data-a="add-food">+ Agregar</button>';
   if(state.meals.length)h+='<div class="subt" style="margin-top:16px">⭐ Mis comidas</div><div class="mealchips">'+state.meals.map(function(m){return '<button class="chip" data-a="meal" data-id="'+esc(m.id)+'">'+esc(m.name)+'</button>';}).join('')+'</div>';
@@ -325,7 +355,8 @@ function viewHoy(){
   SYMS.forEach(function(sy){var cur=d.sym[sy[0]];h+='<div class="symname">'+sy[1]+'</div><div class="lvl">'+LV.map(function(l,v){return '<button class="'+(cur===v?'on l'+v:'')+'" data-a="sym" data-s="'+sy[0]+'" data-v="'+v+'">'+l+'</button>';}).join('')+'</div>';});
   h+='<div class="symname">Horas de sueño</div><div class="water" style="margin:6px 0 10px"><button class="round" data-a="sleep-minus" aria-label="Menos">−</button><div class="cups"><div class="n">'+(d.sleep==null?'—':fmtNum(d.sleep,1))+'</div><div class="meta">horas anoche</div></div><button class="round" data-a="sleep-plus" aria-label="Más">+</button></div>';
   if(d.vitals.length)h+=d.vitals.map(function(v){return '<div class="item"><div class="grow"><div class="name">'+vitText(v)+'</div>'+(v.note?'<div class="meta">'+esc(v.note)+'</div>':'')+'</div><button class="icon-btn" data-a="vit-del" data-id="'+esc(v.id)+'" aria-label="Borrar">✕</button></div>';}).join('');
-  h+='<button class="btn soft" data-a="vitals">+ Pulso, presión o nota</button></div>';
+  if(d.events.length)h+=d.events.map(function(e){return '<div class="item"><div class="grow"><div class="name">'+evText(e)+'</div>'+(e.note?'<div class="meta">'+esc(e.note)+'</div>':'')+'</div><button class="icon-btn" data-a="ev-del" data-k="'+k+'" data-id="'+esc(e.id)+'" aria-label="Borrar">✕</button></div>';}).join('');
+  h+='<button class="btn soft" data-a="vitals">+ Pulso, presión o nota</button><button class="btn soft" data-a="event">+ Evento para el neurólogo</button></div>';
 
   h+='<div class="card"><h2>Agua</h2><div class="water"><button class="round" data-a="water-minus" aria-label="Quitar un vaso">−</button><div class="cups"><div class="n">'+d.water+'</div><div class="meta">'+(d.water===1?'vaso':'vasos')+' hoy</div><div class="drops">'+'💧'.repeat(Math.min(d.water,12))+'</div></div><button class="round" data-a="water-plus" aria-label="Agregar un vaso">+</button></div></div>';
 
@@ -346,6 +377,7 @@ function openDay(k){
   if(d.sleep!=null)sy.push('Sueño: '+fmtNum(d.sleep,1)+' h');
   if(sy.length)h+='<p class="meta">'+sy.join(' · ')+'</p>';
   d.vitals.forEach(function(v){h+='<p class="meta">'+vitText(v)+(v.note?' — '+esc(v.note):'')+'</p>';});
+  d.events.forEach(function(e){h+='<p class="meta">Evento: '+evText(e)+(e.note?' — '+esc(e.note):'')+'</p>';});
   h+='<button class="btn ghost" data-a="close">Cerrar</button>';
   openSheet(h);
 }
@@ -360,7 +392,7 @@ function foodListHTML(q,f,mode){
     if(!items.length)return;count+=items.length;
     out+='<div class="ghead">'+COLORS[c].emoji+' '+COLORS[c].label+'</div>';
     out+=items.map(function(x){
-      var info='<div class="grow"><div class="name">'+esc(x.name)+(x.custom?'<span class="mine">Mío</span>':'')+'</div><div class="meta">'+esc(x.portion)+' · ~'+fmtNum(x.phe)+' mg Phe</div></div>';
+      var info='<div class="grow"><div class="name">'+esc(x.name)+(x.custom?'<span class="mine">Mío</span>':'')+'</div><div class="meta">'+foodMeta(x)+'</div></div>';
       if(mode==='picker')return '<button class="item pickrow" data-a="pick" data-id="'+esc(x.id)+'">'+info+'<span class="plus">+</span></button>';
       return '<div class="item">'+info+(x.custom?'<button class="icon-btn" data-a="custom-del" data-id="'+esc(x.id)+'" aria-label="Borrar alimento">🗑</button>':'')+'<button class="add-btn" data-a="pick" data-id="'+esc(x.id)+'">Agregar a hoy</button></div>';
     }).join('');
@@ -383,25 +415,26 @@ function openQty(food){
   pending={food:food,qty:1};
   var h='<div class="grab"></div><h3>'+COLORS[food.color].emoji+' '+esc(food.name)+'</h3><div class="meta">'+esc(food.portion)+' · ~'+fmtNum(food.phe)+' mg Phe por porción</div>'+
     '<div class="stepper"><button class="round" data-a="qty-minus" aria-label="Menos">−</button><div class="sval" id="qtyVal">1</div><button class="round" data-a="qty-plus" aria-label="Más">+</button></div>'+
-    '<div class="preview">porciones · Total aprox. <b id="qtyTot">'+fmtNum(food.phe)+'</b> mg</div>';
+    '<div class="preview">porciones · Total aprox. <b id="qtyTot">'+fmtNum(food.phe)+'</b> mg</div><div class="preview" id="qtyExtra">'+qtyExtra(food,1)+'</div>';
   if(food.color==='r')h+='<div class="note">Este alimento suele evitarse. Si tu nutriólogo te lo indicó, adelante.</div>';
   h+='<button class="btn" data-a="qty-confirm">Agregar a hoy</button><button class="btn ghost" data-a="close">Cancelar</button>';
   openSheet(h);
 }
-function updateQty(){if(!pending)return;$('#qtyVal').textContent=fmtQty(pending.qty);$('#qtyTot').textContent=fmtNum(Math.round(pending.food.phe*pending.qty));}
+function updateQty(){if(!pending)return;$('#qtyVal').textContent=fmtQty(pending.qty);$('#qtyTot').textContent=fmtNum(Math.round(pending.food.phe*pending.qty));var qe=$('#qtyExtra');if(qe)qe.textContent=qtyExtra(pending.food,pending.qty);}
 function openCustom(){
   customColor='g';
   openSheet('<div class="grab"></div><h3>Alimento propio</h3><p class="help">Usa los valores de tu nutriólogo o de la etiqueta.</p>'+
     '<label class="f" for="cName">Nombre</label><input id="cName" placeholder="Ej. Galletas bajas en proteína" autocomplete="off">'+
     '<label class="f" for="cPortion">Porción</label><input id="cPortion" placeholder="Ej. 2 piezas" autocomplete="off">'+
     '<label class="f" for="cPhe">Phe por porción (mg)</label><input id="cPhe" inputmode="decimal" placeholder="Ej. 20">'+
+    (state.settings.kcalOn?'<label class="f" for="cKcal">Calorías por porción (opcional)</label><input id="cKcal" inputmode="decimal" placeholder="Ej. 120">':'')+
     '<label class="f">Color</label><div class="colors">'+['g','y','r'].map(function(c){return '<button class="colorbtn'+(c==='g'?' on':'')+'" data-a="ccolor" data-c="'+c+'">'+COLORS[c].emoji+'<br>'+COLORS[c].label+'</button>';}).join('')+'</div>'+
     '<button class="btn" data-a="custom-save">Guardar alimento</button><button class="btn ghost" data-a="close">Cancelar</button>');
 }
 
 /* ---------- Comidas guardadas ---------- */
 function mealPhe(m){return m.items.reduce(function(s,f){return s+(Number(f.phe)||0)*(Number(f.qty)||0);},0);}
-var mealSel=[];
+var mealSel=[],draftEx=false,draftKcal=false;
 function mealSelHTML(){return getDay(todayKey()).foods.map(function(f,i){var on=mealSel[i];return '<button class="check'+(on?' sel':'')+'" data-a="mealsel" data-i="'+i+'"><span class="box">'+(on?'✓':'')+'</span><span class="grow"><span class="name">'+esc(f.name)+'</span><br><span class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+' · ~'+fmtNum(Math.round(f.phe*f.qty))+' mg</span></span></button>';}).join('');}
 function openMealNew(){
   mealSel=getDay(todayKey()).foods.map(function(){return true;});
@@ -422,6 +455,17 @@ function openVitals(){
     '<button class="btn" data-a="vit-save">Guardar</button><button class="btn ghost" data-a="close">Cancelar</button>');
 }
 
+function openEvent(){
+  evType=EVT[0];var now=new Date();
+  openSheet('<div class="grab"></div><h3>Evento para el neurólogo</h3><p class="help">Anota lo que pasó. Entra al reporte para tu consulta.</p>'+
+    '<div class="two"><div><label class="f" for="eDate">Fecha</label><input type="date" id="eDate" value="'+todayKey()+'"></div><div><label class="f" for="eTime">Hora</label><input type="time" id="eTime" value="'+pad(now.getHours())+':'+pad(now.getMinutes())+'"></div></div>'+
+    '<label class="f">Tipo</label><div class="evtypes">'+EVT.map(function(t,i){return '<button class="colorbtn'+(i===0?' on':'')+'" data-a="evtype" data-i="'+i+'">'+t+'</button>';}).join('')+'</div>'+
+    '<label class="f" for="eDur">Duración aproximada (opcional)</label><input id="eDur" placeholder="Ej. 1 minuto" autocomplete="off">'+
+    '<label class="f" for="eNote">Nota (opcional)</label><textarea id="eNote" style="min-height:90px" placeholder="Qué pasó antes, cómo te sentiste después…"></textarea>'+
+    '<p class="help">Si una crisis dura más de 5 minutos, se repite sin que se recupere o hay una lesión, llamen al 911.</p>'+
+    '<button class="btn" data-a="ev-save">Guardar</button><button class="btn ghost" data-a="close">Cancelar</button>');
+}
+
 /* ---------- Reporte ---------- */
 var repDays=14;
 function lastKeys(n){var out=[],t=new Date();for(var i=n-1;i>=0;i--)out.push(keyOf(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i)));return out;}
@@ -439,10 +483,13 @@ function buildReport(n){
   L.push('Límite diario indicado: '+(lim?fmtNum(lim)+' mg':'sin definir'));
   if(ph.length){
     L.push('Promedio: '+fmtNum(Math.round(avg(ph)))+' mg/día ('+ph.length+' días con alimentos)');
+    if(exOn())L.push('≈ '+fmtNum(toEx(avg(ph)),1)+' intercambios/día'+(lim?' (límite ≈ '+fmtNum(toEx(lim),1)+')':''));
     L.push('Mínimo / máximo: '+fmtNum(Math.round(Math.min.apply(null,ph)))+' / '+fmtNum(Math.round(Math.max.apply(null,ph)))+' mg');
     if(lim)L.push('Días que llegaron al límite: '+ph.filter(function(x){return x>=lim;}).length);
   }else L.push('Sin alimentos registrados.');
   L.push('');
+  if(s.kcalOn){var kcs=days.filter(function(d){return d.foods.length||d.formula.some(Boolean);}).map(dayKcal);L.push('CALORÍAS (aprox.)');
+    if(kcs.length)L.push('Promedio: '+fmtNum(Math.round(avg(kcs)))+' kcal/día ('+kcs.length+' días)'+(Number(s.kcalGoal)?' · meta indicada: '+fmtNum(s.kcalGoal)+' kcal':''));else L.push('Sin registro.');L.push('');}
   var nd=s.formulaDoses,tk=0,full=0;
   days.forEach(function(d){var c=0;for(var i=0;i<nd;i++)if(d.formula[i])c++;tk+=c;if(c===nd)full++;});
   L.push('FÓRMULA ('+nd+' tomas al día)');
@@ -466,11 +513,14 @@ function buildReport(n){
   reg.forEach(function(k){getDay(k).vitals.forEach(function(v){var p=[];if(v.pulse)p.push('pulso '+fmtNum(v.pulse));if(v.sys&&v.dia)p.push('presión '+fmtNum(v.sys)+'/'+fmtNum(v.dia));if(v.note)p.push(v.note);
     vit.push('- '+fmtAx(k)+' '+new Date(v.t).toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})+': '+p.join(', '));});});
   if(vit.length){L.push('PULSO / PRESIÓN / NOTAS');L=L.concat(vit);L.push('');}
+  var evs=[];reg.forEach(function(k){getDay(k).events.forEach(function(e){evs.push('- '+fmtAx(k)+' '+[e.time,e.type,e.dur].filter(Boolean).join(' · ')+(e.note?': '+e.note:''));});});
+  if(evs.length){L.push('EVENTOS NEUROLÓGICOS ('+evs.length+')');L=L.concat(evs);L.push('');}
   var labs=state.labs.slice().sort(byDate),inP=labs.filter(function(l){return l.date>=k0&&l.date<=k1;});
   L.push('PHE EN SANGRE'+(validRange()?' (meta '+fmtNum(s.rangeMin)+'–'+fmtNum(s.rangeMax)+' µmol/L)':''));
   if(inP.length)inP.forEach(function(l){L.push('- '+fmtShort(l.date)+': '+fmtNum(l.value,1)+' µmol/L');});
   else if(labs.length){var lb=labs[labs.length-1];L.push('Sin resultados en el periodo. Último: '+fmtShort(lb.date)+', '+fmtNum(lb.value,1)+' µmol/L');}
   else L.push('Sin resultados.');
+  var lsr=labStatus();if(lsr&&lsr.next)L.push('Próximo análisis: '+fmtShort(lsr.next)+' (cada '+lsr.ev+' días)');
   var ws=state.weights.filter(function(x){return x.date>=k0&&x.date<=k1;}).sort(byDate);
   if(ws.length){L.push('');L.push('PESO');ws.forEach(function(x){L.push('- '+fmtShort(x.date)+': '+fmtNum(x.kg,1)+' kg');});}
   L.push('');
@@ -520,6 +570,7 @@ function viewAnalisis(){
   if(last){
     h+='<div class="card"><div class="label">Último resultado</div><div class="big">'+fmtNum(last.value,1)+'<span class="unit"> µmol/L</span></div><div class="meta">'+fmtShort(last.date)+'</div>';
     if(band){if(last.value<band[0])h+='<span class="pill out">Por debajo de tu rango meta</span>';else if(last.value>band[1])h+='<span class="pill out">Por arriba de tu rango meta</span>';else h+='<span class="pill ok">Dentro de tu rango meta</span>';}
+    var lsa=labStatus();if(lsa&&lsa.next)h+='<p class="help">Próximo análisis: '+fmtShort(lsa.next)+'</p>';
     h+='<p class="help">Comparte tus resultados con tu equipo médico.</p></div>';
   }
   h+='<div class="card"><h2>Tendencia</h2>'+lineChart(labs.map(function(l){return{k:l.date,y:l.value};}),{band:band,dec:1,empty:'Aún no hay resultados.',aria:'Phe en sangre'})+
@@ -575,12 +626,18 @@ function medsEditHTML(){
 function syncDraftMeds(){Array.prototype.forEach.call(document.querySelectorAll('[data-mi]'),function(el){var m=draftMeds[+el.dataset.mi];if(m)m[el.dataset.mf]=el.value;});}
 function openSettings(){
   var s=state.settings;
-  draftMeds=s.meds.map(function(m){return Object.assign({},m);});draftDoses=s.formulaDoses;
+  draftMeds=s.meds.map(function(m){return Object.assign({},m);});draftDoses=s.formulaDoses;draftEx=!!s.exOn;draftKcal=!!s.kcalOn;
   openSheet('<div class="grab"></div><div class="sheet-head"><h3>Ajustes</h3><button class="icon-btn" data-a="close" aria-label="Cerrar">✕</button></div>'+
     '<label class="f" for="setLimit">Límite diario de Phe (mg)</label><input id="setLimit" inputmode="decimal" value="'+(s.pheLimit==null?'':esc(s.pheLimit))+'" placeholder="Escríbelo aquí"><div class="help">Lo define tu nutriólogo.</div>'+
     '<div class="sec"><label class="f">Tomas de fórmula al día</label><div class="stepper sm"><button class="round" data-a="doses-minus" aria-label="Menos">−</button><div class="sval" id="setDoses">'+draftDoses+'</div><button class="round" data-a="doses-plus" aria-label="Más">+</button></div></div>'+
     '<div class="sec"><label class="f">Medicamentos y suplementos</label><div id="medsEdit">'+medsEditHTML()+'</div><button class="btn soft" data-a="med-add">+ Agregar medicamento</button></div>'+
     '<div class="sec"><label class="f">Rango meta de Phe en sangre (µmol/L)</label><div class="two"><input id="setMin" inputmode="decimal" value="'+(s.rangeMin==null?'':esc(s.rangeMin))+'" placeholder="Mínimo"><input id="setMax" inputmode="decimal" value="'+(s.rangeMax==null?'':esc(s.rangeMax))+'" placeholder="Máximo"></div><div class="help">Sugerencia inicial: 120–360. Confírmalo con tu médico.</div></div>'+
+    '<div class="sec"><label class="f" for="setLabEvery">Aviso de análisis: cada cuántos días</label><input id="setLabEvery" inputmode="numeric" value="'+(s.labEvery==null?'':esc(s.labEvery))+'" placeholder="Ej. 7"><div class="help">La frecuencia que te indique tu clínica. Déjalo vacío para no ver avisos.</div></div>'+
+    '<div class="sec"><button class="switchrow" data-a="tog" data-k="ex"><span class="grow"><span class="name">Contar en intercambios</span><br><span class="meta">Solo si tu nutriólogo trabaja con intercambios.</span></span><span class="sw2'+(draftEx?' on':'')+'" id="swex"></span></button>'+
+      '<div id="exFields" style="'+(draftEx?'':'display:none')+'"><label class="f" for="setExMg">mg de Phe por intercambio</label><input id="setExMg" inputmode="decimal" value="'+(s.exMg==null?'':esc(s.exMg))+'" placeholder="Te lo dice tu nutriólogo"></div></div>'+
+    '<div class="sec"><button class="switchrow" data-a="tog" data-k="kcal"><span class="grow"><span class="name">Registrar calorías</span><br><span class="meta">Para ver si comes suficiente. Valores aproximados.</span></span><span class="sw2'+(draftKcal?' on':'')+'" id="swkcal"></span></button>'+
+      '<div id="kcalFields" style="'+(draftKcal?'':'display:none')+'"><label class="f" for="setKcalGoal">Meta diaria de calorías (opcional)</label><input id="setKcalGoal" inputmode="numeric" value="'+(s.kcalGoal==null?'':esc(s.kcalGoal))+'" placeholder="La define tu nutriólogo">'+
+      '<label class="f" for="setFormulaKcal">Calorías por toma de fórmula</label><input id="setFormulaKcal" inputmode="numeric" value="'+(s.formulaKcal==null?'':esc(s.formulaKcal))+'" placeholder="Viene en la etiqueta"><div class="help">Se suman cada vez que marcas una toma en el checklist.</div></div></div>'+
     '<button class="btn" data-a="settings-save">Guardar cambios</button>'+
     '<div class="sec"><label class="f">Respaldo</label><div class="help">Tus datos viven solo en este teléfono. Guarda un respaldo de vez en cuando.</div><button class="btn soft" data-a="export">Exportar respaldo</button><button class="btn soft" data-a="import">Importar respaldo</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>','tall');
 }
@@ -590,7 +647,11 @@ function saveSettings(){
   if(raw!==''){lim=num(raw);if(!(lim>0)){toast('Escribe un número válido para el límite.');return;}}
   var mnRaw=$('#setMin').value.trim(),mxRaw=$('#setMax').value.trim(),mn=null,mx=null;
   if(mnRaw!==''||mxRaw!==''){mn=num(mnRaw);mx=num(mxRaw);if(!(mn>=0)||!(mx>0)||mn>=mx){toast('Revisa el rango: el mínimo debe ser menor que el máximo.');return;}}
+  var le=$('#setLabEvery').value.trim(),labEvery=null;if(le!==''){labEvery=parseInt(le,10);if(!(labEvery>=1&&labEvery<=365)){toast('Revisa cada cuántos días toca el análisis.');return;}}
+  var exMg=num($('#setExMg').value);if(draftEx&&!(exMg>0)){toast('Escribe los mg de Phe por intercambio.');return;}if(!(exMg>0))exMg=null;
+  var kGoal=num($('#setKcalGoal').value),fKcal=num($('#setFormulaKcal').value);
   var s=state.settings;s.pheLimit=lim;s.formulaDoses=draftDoses;s.rangeMin=mn;s.rangeMax=mx;
+  s.labEvery=labEvery;s.exOn=draftEx;s.exMg=exMg;s.kcalOn=draftKcal;s.kcalGoal=kGoal>0?kGoal:null;s.formulaKcal=fKcal>=0?fKcal:null;
   s.meds=draftMeds.filter(function(m){return String(m.name||'').trim();}).map(function(m){return{id:m.id||('m_'+uid()),name:m.name.trim(),dose:String(m.dose||'').trim(),when:String(m.when||'').trim()};});
   save();closeSheet();render();toast('Ajustes guardados ✓');
 }
@@ -636,7 +697,7 @@ document.addEventListener('click',function(e){
     case 'qty-plus':if(pending){pending.qty=Math.min(20,pending.qty+0.5);updateQty();}break;
     case 'qty-confirm':
       if(!pending)break;var fd=pending.food;
-      getDay(k,true).foods.push({id:uid(),fid:fd.id,name:fd.name,portion:fd.portion,phe:Number(fd.phe)||0,color:fd.color,qty:pending.qty,t:Date.now()});
+      getDay(k,true).foods.push({id:uid(),fid:fd.id,name:fd.name,portion:fd.portion,phe:Number(fd.phe)||0,kcal:fd.kcal!=null?fd.kcal:null,color:fd.color,qty:pending.qty,t:Date.now()});
       save();closeSheet();toast('Agregado a hoy ✓');if(tab==='hoy')render();break;
     case 'eat-del':
       d=getDay(k,true);var it=d.foods.filter(function(x){return x.id===el.dataset.id;})[0];
@@ -653,7 +714,7 @@ document.addEventListener('click',function(e){
       if(!nm){toast('Escribe el nombre del alimento.');break;}
       if(!po){toast('Escribe la porción.');break;}
       if(!(ph>=0)){toast('Escribe la Phe en mg (puede ser 0).');break;}
-      state.customFoods.push({id:'c_'+uid(),name:nm,portion:po,phe:ph,color:customColor});save();closeSheet();render();toast('Alimento guardado ✓');break;
+      var ckEl=$('#cKcal'),ck=ckEl?num(ckEl.value):NaN;state.customFoods.push({id:'c_'+uid(),name:nm,portion:po,phe:ph,kcal:ck>=0?ck:null,color:customColor});save();closeSheet();render();toast('Alimento guardado ✓');break;
     case 'custom-del':
       var cf=state.customFoods.filter(function(x){return x.id===el.dataset.id;})[0];
       if(cf&&confirm('¿Borrar “'+cf.name+'” de tus alimentos?')){state.customFoods=state.customFoods.filter(function(x){return x.id!==cf.id;});save();render();}break;
@@ -679,7 +740,7 @@ document.addEventListener('click',function(e){
     case 'meal-save':
       var mn=$('#mealName').value.trim();
       if(!mn){toast('Ponle un nombre a la comida.');break;}
-      var its=getDay(k).foods.filter(function(x,j){return mealSel[j];}).map(function(x){return{fid:x.fid,name:x.name,portion:x.portion,phe:x.phe,color:x.color,qty:x.qty};});
+      var its=getDay(k).foods.filter(function(x,j){return mealSel[j];}).map(function(x){return{fid:x.fid,name:x.name,portion:x.portion,phe:x.phe,kcal:foodKcal(x),color:x.color,qty:x.qty};});
       if(!its.length){toast('Elige al menos un alimento.');break;}
       state.meals.push({id:'meal_'+uid(),name:mn,items:its});save();closeSheet();render();toast('Comida guardada ⭐');break;
     case 'meal-add':
@@ -705,6 +766,18 @@ document.addEventListener('click',function(e){
     case 'rep-days':repDays=+el.dataset.n;$('#repChips').innerHTML=repChips();$('#repText').textContent=buildReport(repDays);break;
     case 'rep-share':var rt=buildReport(repDays);if(navigator.share){navigator.share({title:'Reporte Mi Guía PKU',text:rt}).catch(function(e){if(!e||e.name!=='AbortError')copyText(rt);});}else copyText(rt);break;
     case 'rep-copy':copyText(buildReport(repDays));break;
+    case 'tog':
+      if(el.dataset.k==='ex'){draftEx=!draftEx;$('#swex').classList.toggle('on',draftEx);$('#exFields').style.display=draftEx?'':'none';}
+      else{draftKcal=!draftKcal;$('#swkcal').classList.toggle('on',draftKcal);$('#kcalFields').style.display=draftKcal?'':'none';}break;
+    case 'event':openEvent();break;
+    case 'evtype':evType=EVT[+el.dataset.i];Array.prototype.forEach.call(document.querySelectorAll('.evtypes .colorbtn'),function(b){b.classList.toggle('on',b===el);});break;
+    case 'ev-save':
+      var ed=$('#eDate').value;
+      if(!isKey(ed)){toast('Elige una fecha.');break;}
+      var eday=getDay(ed,true);eday.events.push({id:'e_'+uid(),time:$('#eTime').value||'',type:evType,dur:$('#eDur').value.trim(),note:$('#eNote').value.trim()});
+      eday.events.sort(function(a,b){return a.time<b.time?-1:a.time>b.time?1:0;});
+      save();closeSheet();render();toast('Evento guardado');break;
+    case 'ev-del':if(confirm('¿Borrar este evento?')){d=getDay(el.dataset.k,true);d.events=d.events.filter(function(x){return x.id!==el.dataset.id;});save();render();}break;
     case 'settings-save':saveSettings();break;
     case 'export':exportData();break;
     case 'import':$('#importFile').click();break;
