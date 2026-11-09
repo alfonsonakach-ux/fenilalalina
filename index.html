@@ -151,6 +151,16 @@ nav.tabs .ic{display:grid;place-items:center;padding:3px 14px;border-radius:14px
 nav.tabs svg{width:25px;height:25px}
 nav.tabs button.on{color:var(--rose-d)}
 nav.tabs button.on .ic{background:var(--rose-l)}
+.lvl{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 14px}
+.lvl button{min-height:48px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font-size:14px;font-weight:600;padding:0 2px}
+.lvl button.on{background:var(--lav);border-color:var(--lav-d);color:var(--lav-d)}
+.lvl button.on.l0{background:var(--mint);border-color:var(--mint-d);color:var(--mint-d)}
+.lvl button.on.l3{background:var(--peach);border-color:var(--peach-d);color:var(--peach-d)}
+.symname{font-weight:600;font-size:15px}
+.mealchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.mealchips::-webkit-scrollbar{display:none}
+.check.sel .box{background:var(--rose-d);border-color:var(--rose-d)}
+.report{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:15px;line-height:1.5;background:var(--bg);border-radius:16px;padding:14px 16px;margin:4px 0 0}
 @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 </style>
 </head>
@@ -208,7 +218,7 @@ function defaultState(){return{
     {id:'m1',name:'Levetiracetam',dose:'750 mg',when:'Mañana'},
     {id:'m2',name:'Levetiracetam',dose:'500 mg',when:'Noche'},
     {id:'m3',name:'Ácido fólico',dose:'',when:''}]},
-  customFoods:[],days:{},
+  customFoods:[],meals:[],days:{},
   labs:[{id:'l_inicial',date:'2026-06-14',value:143.4}],
   weights:[],notes:''};}
 function normalize(s){
@@ -216,6 +226,7 @@ function normalize(s){
   if(!s||typeof s!=='object')return d;
   var o={version:1,settings:Object.assign({},d.settings,s.settings||{}),
     customFoods:Array.isArray(s.customFoods)?s.customFoods:[],
+    meals:Array.isArray(s.meals)?s.meals:[],
     days:(s.days&&typeof s.days==='object')?s.days:{},
     labs:Array.isArray(s.labs)?s.labs:d.labs,
     weights:Array.isArray(s.weights)?s.weights:[],
@@ -249,11 +260,14 @@ function byDate(a,b){return a.date<b.date?-1:a.date>b.date?1:0;}
 var toastT;
 function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('show');},2300);}
 
-function emptyDay(){return{foods:[],formula:[],meds:{},water:0};}
+function emptyDay(){return{foods:[],formula:[],meds:{},water:0,sym:{},sleep:null,vitals:[]};}
 function getDay(k,create){var d=state.days[k];if(!d){d=emptyDay();if(create)state.days[k]=d;}
-  d.foods=d.foods||[];d.formula=d.formula||[];d.meds=d.meds||{};d.water=d.water||0;return d;}
+  d.foods=d.foods||[];d.formula=d.formula||[];d.meds=d.meds||{};d.water=d.water||0;d.sym=d.sym||{};d.vitals=d.vitals||[];if(d.sleep===undefined)d.sleep=null;return d;}
+var SYMS=[['mareo','Mareo'],['palp','Palpitaciones'],['cans','Cansancio']],LV=['Nada','Leve','Medio','Fuerte'];
+function hasSym(d){return !!d.sym&&Object.keys(d.sym).some(function(x){return d.sym[x]!=null;});}
+function vitText(v){var p=[new Date(v.t).toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})];if(v.pulse)p.push('Pulso '+fmtNum(v.pulse));if(v.sys&&v.dia)p.push('Presión '+fmtNum(v.sys)+'/'+fmtNum(v.dia));return esc(p.join(' · '));}
 function dayPhe(d){return d.foods.reduce(function(s,f){return s+(Number(f.phe)||0)*(Number(f.qty)||0);},0);}
-function dayHasData(d){return d&&((d.foods&&d.foods.length)||(d.formula&&d.formula.some(Boolean))||(d.meds&&Object.keys(d.meds).some(function(k){return d.meds[k];}))||d.water);}
+function dayHasData(d){return d&&((d.vitals&&d.vitals.length)||hasSym(d)||d.sleep!=null||(d.foods&&d.foods.length)||(d.formula&&d.formula.some(Boolean))||(d.meds&&Object.keys(d.meds).some(function(k){return d.meds[k];}))||d.water);}
 function allFoods(){return BASE.concat(state.customFoods.map(function(c){return Object.assign({custom:true},c);}));}
 function findFood(id){return allFoods().filter(function(f){return f.id===id;})[0];}
 function validRange(){var s=state.settings;return isFinite(s.rangeMin)&&isFinite(s.rangeMax)&&s.rangeMin!==null&&s.rangeMax!==null&&Number(s.rangeMin)<Number(s.rangeMax);}
@@ -287,12 +301,15 @@ function viewHoy(){
   if(lim)h+='<div class="bar"><div class="fill'+(total>=lim?' full':'')+'" style="width:'+(pct*100).toFixed(1)+'%"></div></div>';
   h+='<p class="msg">'+msg+'</p>';
   if(!lim)h+='<button class="btn soft" data-a="settings">Escribir mi límite</button>';
-  h+='<button class="btn" data-a="add-food">+ Agregar</button></div>';
+  h+='<button class="btn" data-a="add-food">+ Agregar</button>';
+  if(state.meals.length)h+='<div class="subt" style="margin-top:16px">⭐ Mis comidas</div><div class="mealchips">'+state.meals.map(function(m){return '<button class="chip" data-a="meal" data-id="'+esc(m.id)+'">'+esc(m.name)+'</button>';}).join('')+'</div>';
+  h+='</div>';
 
   h+='<div class="card"><h2>Lo que comí hoy</h2>';
   if(!d.foods.length)h+='<p class="empty">Aún no hay nada registrado hoy.</p>';
   else h+=d.foods.slice().reverse().map(function(f){
     return '<div class="item"><span>'+COLORS[f.color||'g'].emoji+'</span><div class="grow"><div class="name">'+esc(f.name)+'</div><div class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+'</div></div><div class="phe">'+fmtNum(Math.round(f.phe*f.qty))+' mg</div><button class="icon-btn" data-a="eat-del" data-id="'+f.id+'" aria-label="Borrar">✕</button></div>';}).join('');
+  if(d.foods.length)h+='<button class="btn soft" data-a="meal-new">⭐ Guardar como comida</button>';
   h+='</div>';
 
   var n=s.formulaDoses,doneF=0,doses='';
@@ -303,6 +320,12 @@ function viewHoy(){
   h+='<div class="card"><h2>Mi checklist</h2><div class="subt">Fórmula</div><div class="doses">'+doses+'</div>'+(s.meds.length?'<div class="subt" style="margin-top:14px">Medicamentos</div>'+meds:'');
   if(doneF===n&&doneM===s.meds.length)h+='<div class="allset">Todo listo por hoy ✨</div>';
   h+='</div>';
+
+  h+='<div class="card"><h2>¿Cómo te sientes hoy?</h2>';
+  SYMS.forEach(function(sy){var cur=d.sym[sy[0]];h+='<div class="symname">'+sy[1]+'</div><div class="lvl">'+LV.map(function(l,v){return '<button class="'+(cur===v?'on l'+v:'')+'" data-a="sym" data-s="'+sy[0]+'" data-v="'+v+'">'+l+'</button>';}).join('')+'</div>';});
+  h+='<div class="symname">Horas de sueño</div><div class="water" style="margin:6px 0 10px"><button class="round" data-a="sleep-minus" aria-label="Menos">−</button><div class="cups"><div class="n">'+(d.sleep==null?'—':fmtNum(d.sleep,1))+'</div><div class="meta">horas anoche</div></div><button class="round" data-a="sleep-plus" aria-label="Más">+</button></div>';
+  if(d.vitals.length)h+=d.vitals.map(function(v){return '<div class="item"><div class="grow"><div class="name">'+vitText(v)+'</div>'+(v.note?'<div class="meta">'+esc(v.note)+'</div>':'')+'</div><button class="icon-btn" data-a="vit-del" data-id="'+esc(v.id)+'" aria-label="Borrar">✕</button></div>';}).join('');
+  h+='<button class="btn soft" data-a="vitals">+ Pulso, presión o nota</button></div>';
 
   h+='<div class="card"><h2>Agua</h2><div class="water"><button class="round" data-a="water-minus" aria-label="Quitar un vaso">−</button><div class="cups"><div class="n">'+d.water+'</div><div class="meta">'+(d.water===1?'vaso':'vasos')+' hoy</div><div class="drops">'+'💧'.repeat(Math.min(d.water,12))+'</div></div><button class="round" data-a="water-plus" aria-label="Agregar un vaso">+</button></div></div>';
 
@@ -319,6 +342,10 @@ function openDay(k){
   h+=d.foods.length?d.foods.map(function(f){return '<div class="item"><span>'+COLORS[f.color||'g'].emoji+'</span><div class="grow"><div class="name">'+esc(f.name)+'</div><div class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+'</div></div><div class="phe">'+fmtNum(Math.round(f.phe*f.qty))+' mg</div></div>';}).join(''):'<p class="empty">Sin alimentos registrados.</p>';
   var taken=s.meds.filter(function(m){return d.meds[m.id];}).map(function(m){return esc(m.name+(m.dose?' '+m.dose:''));});
   if(taken.length)h+='<p class="meta">Medicamentos: '+taken.join(', ')+'</p>';
+  var sy=SYMS.filter(function(x){return d.sym[x[0]]!=null;}).map(function(x){return x[1]+': '+LV[d.sym[x[0]]].toLowerCase();});
+  if(d.sleep!=null)sy.push('Sueño: '+fmtNum(d.sleep,1)+' h');
+  if(sy.length)h+='<p class="meta">'+sy.join(' · ')+'</p>';
+  d.vitals.forEach(function(v){h+='<p class="meta">'+vitText(v)+(v.note?' — '+esc(v.note):'')+'</p>';});
   h+='<button class="btn ghost" data-a="close">Cerrar</button>';
   openSheet(h);
 }
@@ -327,6 +354,7 @@ function openDay(k){
 function chipsHTML(cur,act){return [['all','Todos'],['g','🟢 Libre'],['y','🟡 Con medida'],['r','🔴 Evitar']].map(function(c){return '<button class="chip'+(cur===c[0]?' on':'')+'" data-a="'+act+'" data-f="'+c[0]+'">'+c[1]+'</button>';}).join('');}
 function foodListHTML(q,f,mode){
   var nq=norm(q.trim()),out='',count=0,foods=allFoods();
+  if(mode==='picker'&&!nq&&f==='all'&&state.meals.length){out+='<div class="ghead">⭐ Mis comidas</div>'+state.meals.map(function(m){return '<button class="item pickrow" data-a="meal" data-id="'+esc(m.id)+'"><div class="grow"><div class="name">'+esc(m.name)+'</div><div class="meta">'+m.items.length+' alimento'+(m.items.length===1?'':'s')+' · ~'+fmtNum(Math.round(mealPhe(m)))+' mg Phe</div></div><span class="plus">+</span></button>';}).join('');count+=state.meals.length;}
   ['g','y','r'].filter(function(c){return f==='all'||f===c;}).forEach(function(c){
     var items=foods.filter(function(x){return x.color===c&&(!nq||norm(x.name).indexOf(nq)>=0);});
     if(!items.length)return;count+=items.length;
@@ -349,7 +377,7 @@ function viewAlimentos(){
 }
 function openPicker(){
   pick={q:'',f:'all'};
-  openSheet('<div class="grab"></div><h3>Agregar alimento</h3><div class="sticky-s"><input id="pickSearch" type="search" placeholder="Buscar…" autocomplete="off"><div class="chips in" id="pickChips">'+chipsHTML('all','pfilter')+'</div></div><div id="pickList">'+foodListHTML('','all','picker')+'</div><p class="help">Valores aproximados. Tu nutriólogo define tus cantidades.</p>','tall');
+  openSheet('<div class="grab"></div><div class="sheet-head"><h3>Agregar alimento</h3><button class="icon-btn" data-a="close" aria-label="Cerrar">✕</button></div><div class="sticky-s"><input id="pickSearch" type="search" placeholder="Buscar…" autocomplete="off"><div class="chips in" id="pickChips">'+chipsHTML('all','pfilter')+'</div></div><div id="pickList">'+foodListHTML('','all','picker')+'</div><p class="help">Valores aproximados. Tu nutriólogo define tus cantidades.</p>','tall');
 }
 function openQty(food){
   pending={food:food,qty:1};
@@ -370,6 +398,92 @@ function openCustom(){
     '<label class="f">Color</label><div class="colors">'+['g','y','r'].map(function(c){return '<button class="colorbtn'+(c==='g'?' on':'')+'" data-a="ccolor" data-c="'+c+'">'+COLORS[c].emoji+'<br>'+COLORS[c].label+'</button>';}).join('')+'</div>'+
     '<button class="btn" data-a="custom-save">Guardar alimento</button><button class="btn ghost" data-a="close">Cancelar</button>');
 }
+
+/* ---------- Comidas guardadas ---------- */
+function mealPhe(m){return m.items.reduce(function(s,f){return s+(Number(f.phe)||0)*(Number(f.qty)||0);},0);}
+var mealSel=[];
+function mealSelHTML(){return getDay(todayKey()).foods.map(function(f,i){var on=mealSel[i];return '<button class="check'+(on?' sel':'')+'" data-a="mealsel" data-i="'+i+'"><span class="box">'+(on?'✓':'')+'</span><span class="grow"><span class="name">'+esc(f.name)+'</span><br><span class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+' · ~'+fmtNum(Math.round(f.phe*f.qty))+' mg</span></span></button>';}).join('');}
+function openMealNew(){
+  mealSel=getDay(todayKey()).foods.map(function(){return true;});
+  openSheet('<div class="grab"></div><h3>Guardar como comida</h3><p class="help">Después la agregas con un toque desde Hoy o desde el buscador.</p><label class="f" for="mealName">Nombre</label><input id="mealName" placeholder="Ej. Mi desayuno" autocomplete="off"><label class="f">Incluye</label><div id="mealSelList">'+mealSelHTML()+'</div><button class="btn" data-a="meal-save">Guardar comida</button><button class="btn ghost" data-a="close">Cancelar</button>');
+}
+function openMeal(id){
+  var m=state.meals.filter(function(x){return x.id===id;})[0];if(!m)return;
+  openSheet('<div class="grab"></div><h3>⭐ '+esc(m.name)+'</h3><div class="meta">Total aprox. '+fmtNum(Math.round(mealPhe(m)))+' mg Phe</div>'+m.items.map(function(f){return '<div class="item"><span>'+COLORS[f.color||'g'].emoji+'</span><div class="grow"><div class="name">'+esc(f.name)+'</div><div class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+'</div></div><div class="phe">'+fmtNum(Math.round(f.phe*f.qty))+' mg</div></div>';}).join('')+
+    '<button class="btn" data-a="meal-add" data-id="'+esc(m.id)+'">Agregar a hoy</button><button class="btn ghost" data-a="meal-del" data-id="'+esc(m.id)+'">Borrar esta comida</button>');
+}
+
+/* ---------- Síntomas ---------- */
+function openVitals(){
+  openSheet('<div class="grab"></div><h3>Pulso, presión o nota</h3><p class="help">Todo es opcional. Llena solo lo que tengas.</p>'+
+    '<label class="f" for="vPulse">Pulso (latidos por minuto)</label><input id="vPulse" inputmode="numeric" placeholder="Ej. 88">'+
+    '<label class="f">Presión</label><div class="two"><input id="vSys" inputmode="numeric" placeholder="Alta, ej. 110"><input id="vDia" inputmode="numeric" placeholder="Baja, ej. 70"></div>'+
+    '<label class="f" for="vNote">Nota</label><textarea id="vNote" style="min-height:90px" placeholder="Ej. me mareé al levantarme"></textarea>'+
+    '<button class="btn" data-a="vit-save">Guardar</button><button class="btn ghost" data-a="close">Cancelar</button>');
+}
+
+/* ---------- Reporte ---------- */
+var repDays=14;
+function lastKeys(n){var out=[],t=new Date();for(var i=n-1;i>=0;i--)out.push(keyOf(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i)));return out;}
+function avg(a){return a.length?a.reduce(function(s,x){return s+x;},0)/a.length:null;}
+function buildReport(n){
+  var s=state.settings,keys=lastKeys(n),k0=keys[0],k1=keys[keys.length-1];
+  var reg=keys.filter(function(k){return dayHasData(state.days[k]);}),days=reg.map(function(k){return getDay(k);});
+  var L=[];
+  L.push('MI GUÍA PKU — Reporte');
+  L.push('Periodo: '+fmtShort(k0)+' – '+fmtShort(k1)+' ('+n+' días)');
+  L.push('Días con registro: '+reg.length+' de '+n);
+  L.push('');
+  var ph=days.filter(function(d){return d.foods.length;}).map(dayPhe),lim=Number(s.pheLimit)||0;
+  L.push('PHE EN DIETA (aprox.)');
+  L.push('Límite diario indicado: '+(lim?fmtNum(lim)+' mg':'sin definir'));
+  if(ph.length){
+    L.push('Promedio: '+fmtNum(Math.round(avg(ph)))+' mg/día ('+ph.length+' días con alimentos)');
+    L.push('Mínimo / máximo: '+fmtNum(Math.round(Math.min.apply(null,ph)))+' / '+fmtNum(Math.round(Math.max.apply(null,ph)))+' mg');
+    if(lim)L.push('Días que llegaron al límite: '+ph.filter(function(x){return x>=lim;}).length);
+  }else L.push('Sin alimentos registrados.');
+  L.push('');
+  var nd=s.formulaDoses,tk=0,full=0;
+  days.forEach(function(d){var c=0;for(var i=0;i<nd;i++)if(d.formula[i])c++;tk+=c;if(c===nd)full++;});
+  L.push('FÓRMULA ('+nd+' tomas al día)');
+  if(days.length){L.push('Tomas marcadas: '+tk+' de '+(nd*days.length)+' ('+Math.round(tk/(nd*days.length)*100)+'%)');L.push('Días con todas las tomas: '+full+' de '+days.length);}
+  else L.push('Sin registro.');
+  L.push('');
+  if(s.meds.length){
+    L.push('MEDICAMENTOS (días marcados)');
+    s.meds.forEach(function(m){var c=days.filter(function(d){return d.meds[m.id];}).length;L.push('- '+[m.name,m.dose,m.when].filter(Boolean).join(' ')+': '+c+' de '+days.length);});
+    L.push('');
+  }
+  var wa=days.filter(function(d){return d.water>0;}).map(function(d){return d.water;});
+  if(wa.length){L.push('AGUA: promedio '+fmtNum(avg(wa),1)+' vasos/día');L.push('');}
+  var sl=[];
+  SYMS.forEach(function(sy){var v=days.filter(function(d){return d.sym[sy[0]]!=null;}).map(function(d){return d.sym[sy[0]];});
+    if(v.length)sl.push(sy[1]+': promedio '+fmtNum(avg(v),1)+' · días "fuerte": '+v.filter(function(x){return x===3;}).length+' (de '+v.length+' registrados)');});
+  var sleep=days.filter(function(d){return d.sleep!=null;}).map(function(d){return d.sleep;});
+  if(sleep.length)sl.push('Sueño: promedio '+fmtNum(avg(sleep),1)+' h ('+sleep.length+' noches)');
+  if(sl.length){L.push('SÍNTOMAS (0 nada · 1 leve · 2 medio · 3 fuerte)');L=L.concat(sl);L.push('');}
+  var vit=[];
+  reg.forEach(function(k){getDay(k).vitals.forEach(function(v){var p=[];if(v.pulse)p.push('pulso '+fmtNum(v.pulse));if(v.sys&&v.dia)p.push('presión '+fmtNum(v.sys)+'/'+fmtNum(v.dia));if(v.note)p.push(v.note);
+    vit.push('- '+fmtAx(k)+' '+new Date(v.t).toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})+': '+p.join(', '));});});
+  if(vit.length){L.push('PULSO / PRESIÓN / NOTAS');L=L.concat(vit);L.push('');}
+  var labs=state.labs.slice().sort(byDate),inP=labs.filter(function(l){return l.date>=k0&&l.date<=k1;});
+  L.push('PHE EN SANGRE'+(validRange()?' (meta '+fmtNum(s.rangeMin)+'–'+fmtNum(s.rangeMax)+' µmol/L)':''));
+  if(inP.length)inP.forEach(function(l){L.push('- '+fmtShort(l.date)+': '+fmtNum(l.value,1)+' µmol/L');});
+  else if(labs.length){var lb=labs[labs.length-1];L.push('Sin resultados en el periodo. Último: '+fmtShort(lb.date)+', '+fmtNum(lb.value,1)+' µmol/L');}
+  else L.push('Sin resultados.');
+  var ws=state.weights.filter(function(x){return x.date>=k0&&x.date<=k1;}).sort(byDate);
+  if(ws.length){L.push('');L.push('PESO');ws.forEach(function(x){L.push('- '+fmtShort(x.date)+': '+fmtNum(x.kg,1)+' kg');});}
+  L.push('');
+  L.push('Valores de alimentos aproximados. Generado con Mi Guía PKU el '+fmtShort(todayKey())+'.');
+  return L.join('\n');
+}
+function repChips(){return [7,14,28,60].map(function(n){return '<button class="chip'+(n===repDays?' on':'')+'" data-a="rep-days" data-n="'+n+'">'+n+' días</button>';}).join('');}
+function openReport(){
+  openSheet('<div class="grab"></div><div class="sheet-head"><h3>Reporte para el médico</h3><button class="icon-btn" data-a="close" aria-label="Cerrar">✕</button></div>'+
+    '<div class="chips in" id="repChips">'+repChips()+'</div><pre class="report" id="repText">'+esc(buildReport(repDays))+'</pre>'+
+    '<button class="btn" data-a="rep-share">Compartir (WhatsApp, correo…)</button><button class="btn soft" data-a="rep-copy">Copiar texto</button>','tall');
+}
+function copyText(t){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){toast('Copiado ✓');},function(){toast('No se pudo copiar');});}else toast('No se pudo copiar');}
 
 /* ---------- Gráficas ---------- */
 function nice(r){if(!(r>0))return 1;var e=Math.pow(10,Math.floor(Math.log10(r))),f=r/e;return(f<1.5?1:f<3?2:f<7?5:10)*e;}
@@ -413,6 +527,7 @@ function viewAnalisis(){
   h+='<div class="card"><h2>Nuevo resultado</h2><label class="f" for="labDate">Fecha</label><input type="date" id="labDate" value="'+todayKey()+'">'+
     '<label class="f" for="labVal">Phe en sangre (µmol/L)</label><input id="labVal" inputmode="decimal" placeholder="Ej. 240"><button class="btn" data-a="lab-save">Guardar resultado</button></div>';
   if(labs.length)h+='<div class="card"><h2>Historial</h2>'+labs.slice().reverse().map(function(l){return '<div class="item"><div class="grow"><div class="name">'+fmtNum(l.value,1)+' µmol/L</div><div class="meta">'+fmtShort(l.date)+'</div></div><button class="icon-btn" data-a="lab-del" data-id="'+esc(l.id)+'" aria-label="Borrar">✕</button></div>';}).join('')+'</div>';
+  h+='<div class="pad"><button class="btn soft" data-a="report">📄 Reporte para el médico</button></div>';
   return h;
 }
 
@@ -430,6 +545,7 @@ function viewPeso(){
 /* ---------- Guía ---------- */
 function viewGuia(){
   return '<div class="guide">'+
+  '<div class="card"><h2>📄 Reporte para el médico</h2><p class="help" style="margin-top:0">Resumen de Phe, fórmula, medicamentos, síntomas, análisis y peso para compartir en consulta.</p><button class="btn" data-a="report">Ver reporte</button></div>'+
   '<div class="card"><h2>✡️ Kosher</h2><ul>'+
    '<li>Revisa que la fórmula y los productos bajos en proteína tengan <b>hekhsher</b>, y si son parve o lácteos.</li>'+
    '<li><b>Shabat:</b> jalá con harina baja en proteína; cholent de papa, camote y verduras.</li>'+
@@ -557,6 +673,38 @@ document.addEventListener('click',function(e){
     case 'doses-plus':draftDoses=Math.min(8,draftDoses+1);$('#setDoses').textContent=draftDoses;break;
     case 'med-add':syncDraftMeds();draftMeds.push({id:'m_'+uid(),name:'',dose:'',when:''});$('#medsEdit').innerHTML=medsEditHTML();break;
     case 'med-del':syncDraftMeds();draftMeds.splice(+el.dataset.i,1);$('#medsEdit').innerHTML=medsEditHTML();break;
+    case 'meal':openMeal(el.dataset.id);break;
+    case 'meal-new':openMealNew();break;
+    case 'mealsel':mealSel[+el.dataset.i]=!mealSel[+el.dataset.i];$('#mealSelList').innerHTML=mealSelHTML();break;
+    case 'meal-save':
+      var mn=$('#mealName').value.trim();
+      if(!mn){toast('Ponle un nombre a la comida.');break;}
+      var its=getDay(k).foods.filter(function(x,j){return mealSel[j];}).map(function(x){return{fid:x.fid,name:x.name,portion:x.portion,phe:x.phe,color:x.color,qty:x.qty};});
+      if(!its.length){toast('Elige al menos un alimento.');break;}
+      state.meals.push({id:'meal_'+uid(),name:mn,items:its});save();closeSheet();render();toast('Comida guardada ⭐');break;
+    case 'meal-add':
+      var ml=state.meals.filter(function(x){return x.id===el.dataset.id;})[0];if(!ml)break;
+      d=getDay(k,true);ml.items.forEach(function(x){d.foods.push(Object.assign({},x,{id:uid(),t:Date.now()}));});
+      save();closeSheet();toast('“'+ml.name+'” agregada a hoy ✓');if(tab==='hoy')render();break;
+    case 'meal-del':
+      var md=state.meals.filter(function(x){return x.id===el.dataset.id;})[0];
+      if(md&&confirm('¿Borrar la comida “'+md.name+'”? Lo que ya registraste no se borra.')){state.meals=state.meals.filter(function(x){return x.id!==md.id;});save();closeSheet();render();}break;
+    case 'sym':d=getDay(k,true);var sv=+el.dataset.v;d.sym[el.dataset.s]=d.sym[el.dataset.s]===sv?null:sv;save();render();break;
+    case 'sleep-plus':d=getDay(k,true);d.sleep=d.sleep==null?7:Math.min(16,d.sleep+0.5);save();render();break;
+    case 'sleep-minus':d=getDay(k,true);if(d.sleep!=null)d.sleep=d.sleep<=0?null:Math.max(0,d.sleep-0.5);save();render();break;
+    case 'vitals':openVitals();break;
+    case 'vit-save':
+      var vp=num($('#vPulse').value),vs=num($('#vSys').value),vd=num($('#vDia').value),vn=$('#vNote').value.trim(),rec={id:'v_'+uid(),t:Date.now()};
+      if(!isNaN(vp)){if(!(vp>=30&&vp<=220)){toast('Revisa el pulso.');break;}rec.pulse=vp;}
+      if(!isNaN(vs)||!isNaN(vd)){if(!(vs>=60&&vs<=250&&vd>=30&&vd<=160)){toast('Escribe la presión alta y la baja.');break;}rec.sys=vs;rec.dia=vd;}
+      if(vn)rec.note=vn;
+      if(!rec.pulse&&!rec.sys&&!rec.note){toast('Escribe al menos un dato.');break;}
+      getDay(k,true).vitals.push(rec);save();closeSheet();render();toast('Guardado ✓');break;
+    case 'vit-del':if(confirm('¿Borrar este registro?')){d=getDay(k,true);d.vitals=d.vitals.filter(function(x){return x.id!==el.dataset.id;});save();render();}break;
+    case 'report':openReport();break;
+    case 'rep-days':repDays=+el.dataset.n;$('#repChips').innerHTML=repChips();$('#repText').textContent=buildReport(repDays);break;
+    case 'rep-share':var rt=buildReport(repDays);if(navigator.share){navigator.share({title:'Reporte Mi Guía PKU',text:rt}).catch(function(e){if(!e||e.name!=='AbortError')copyText(rt);});}else copyText(rt);break;
+    case 'rep-copy':copyText(buildReport(repDays));break;
     case 'settings-save':saveSettings();break;
     case 'export':exportData();break;
     case 'import':$('#importFile').click();break;
