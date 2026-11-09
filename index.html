@@ -171,6 +171,9 @@ nav.tabs button.on .ic{background:var(--rose-l)}
 .sw2.on{background:var(--mint-d)}
 .sw2.on::after{left:23px}
 .evtypes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.eatrow{display:flex;align-items:center;gap:12px;flex:1;min-width:0;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit}
+.bkbtns{display:flex;gap:8px;margin-top:10px}
+.add-btn.ghost{background:transparent;color:var(--muted)}
 .report{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:15px;line-height:1.5;background:var(--bg);border-radius:16px;padding:14px 16px;margin:4px 0 0}
 @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 </style>
@@ -234,7 +237,7 @@ function defaultState(){return{
     {id:'m3',name:'Ácido fólico',dose:'',when:''}]},
   customFoods:[],meals:[],days:{},
   labs:[{id:'l_inicial',date:'2026-06-14',value:143.4}],
-  weights:[],notes:''};}
+  weights:[],notes:'',created:todayKey(),lastBackup:null,backupSnooze:null};}
 function normalize(s){
   var d=defaultState();
   if(!s||typeof s!=='object')return d;
@@ -244,7 +247,10 @@ function normalize(s){
     days:(s.days&&typeof s.days==='object')?s.days:{},
     labs:Array.isArray(s.labs)?s.labs:d.labs,
     weights:Array.isArray(s.weights)?s.weights:[],
-    notes:typeof s.notes==='string'?s.notes:''};
+    notes:typeof s.notes==='string'?s.notes:'',
+    created:typeof s.created==='string'?s.created:todayKey(),
+    lastBackup:typeof s.lastBackup==='string'?s.lastBackup:null,
+    backupSnooze:typeof s.backupSnooze==='string'?s.backupSnooze:null};
   if(!Array.isArray(o.settings.meds))o.settings.meds=d.settings.meds;
   var n=parseInt(o.settings.formulaDoses,10);o.settings.formulaDoses=(n>=1&&n<=8)?n:4;
   return o;
@@ -288,6 +294,9 @@ function evText(e){return esc([e.time,e.type,e.dur].filter(Boolean).join(' · ')
 function addDays(k,n){var x=parseKey(k);x.setDate(x.getDate()+n);return keyOf(x);}
 function daysBetween(a,b){return Math.round((parseKey(b)-parseKey(a))/864e5);}
 function labStatus(){var ev=parseInt(state.settings.labEvery,10);if(!(ev>0))return null;var labs=state.labs.slice().sort(byDate),last=labs[labs.length-1];if(!last)return{none:true,ev:ev};var next=addDays(last.date,ev);return{next:next,left:daysBetween(todayKey(),next),ev:ev};}
+function backupDue(){var t=todayKey(),base=state.lastBackup||state.created;if(state.backupSnooze&&state.backupSnooze>t)return null;var n=daysBetween(base,t);if(n<14)return null;
+  if(!Object.keys(state.days).some(function(x){return dayHasData(state.days[x]);}))return null;return{never:!state.lastBackup,days:n};}
+function markBackup(){state.lastBackup=todayKey();state.backupSnooze=null;save();if(tab==='hoy'&&!$('#overlay').classList.contains('open'))render();}
 var SYMS=[['mareo','Mareo'],['palp','Palpitaciones'],['cans','Cansancio']],LV=['Nada','Leve','Medio','Fuerte'];
 function hasSym(d){return !!d.sym&&Object.keys(d.sym).some(function(x){return d.sym[x]!=null;});}
 function vitText(v){var p=[new Date(v.t).toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})];if(v.pulse)p.push('Pulso '+fmtNum(v.pulse));if(v.sys&&v.dia)p.push('Presión '+fmtNum(v.sys)+'/'+fmtNum(v.dia));return esc(p.join(' · '));}
@@ -325,6 +334,8 @@ function viewHoy(){
   var h='',ls=labStatus();
   if(ls&&(ls.none||ls.left<=2)){var lt=ls.none?'Cuando tengas tu primer análisis, regístralo aquí.':ls.left<0?'Ya te toca tu análisis de Phe.':ls.left===0?'Hoy te toca tu análisis de Phe.':'Tu análisis de Phe toca en '+ls.left+' día'+(ls.left===1?'':'s')+'.';
     h+='<div class="card banner"><div class="grow"><div class="name">🩸 '+lt+'</div><div class="meta">Cada '+ls.ev+' días, según tu clínica.</div></div><button class="add-btn" data-a="tab" data-t="analisis">Ir</button></div>';}
+  var bd=backupDue();
+  if(bd)h+='<div class="card banner"><div class="grow"><div class="name">💾 '+(bd.never?'Aún no guardas un respaldo de tus datos.':'Hace '+bd.days+' días de tu último respaldo.')+'</div><div class="meta">Así no se pierde nada si cambias de teléfono.</div><div class="bkbtns"><button class="add-btn" data-a="export">Respaldar</button><button class="add-btn ghost" data-a="backup-later">Luego</button></div></div></div>';
   h+='<div class="card"><div class="hero-top"><div><div class="label">Phe de hoy</div><div class="big">'+fmtNum(total)+'<span class="unit"> mg</span></div></div>'+(lim?'<div class="limit">de '+fmtNum(lim)+' mg</div>':'')+'</div>';
   if(lim)h+='<div class="bar"><div class="fill'+(total>=lim?' full':'')+'" style="width:'+(pct*100).toFixed(1)+'%"></div></div>';
   if(exOn())h+='<div class="meta">≈ '+fmtNum(toEx(total),1)+' intercambios'+(lim?' de '+fmtNum(toEx(lim),1):'')+'</div>';
@@ -336,9 +347,10 @@ function viewHoy(){
   h+='</div>';
 
   h+='<div class="card"><h2>Lo que comí hoy</h2>';
+  if(d.foods.length)h+='<p class="help" style="margin:-4px 0 4px">Toca un alimento para cambiar la cantidad.</p>';
   if(!d.foods.length)h+='<p class="empty">Aún no hay nada registrado hoy.</p>';
   else h+=d.foods.slice().reverse().map(function(f){
-    return '<div class="item"><span>'+COLORS[f.color||'g'].emoji+'</span><div class="grow"><div class="name">'+esc(f.name)+'</div><div class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+'</div></div><div class="phe">'+fmtNum(Math.round(f.phe*f.qty))+' mg</div><button class="icon-btn" data-a="eat-del" data-id="'+f.id+'" aria-label="Borrar">✕</button></div>';}).join('');
+    return '<div class="item"><button class="eatrow" data-a="eat-edit" data-id="'+esc(f.id)+'"><span>'+COLORS[f.color||'g'].emoji+'</span><span class="grow"><span class="name">'+esc(f.name)+'</span><br><span class="meta">'+fmtQty(f.qty)+' × '+esc(f.portion)+'</span></span><span class="phe">'+fmtNum(Math.round(f.phe*f.qty))+' mg</span></button><button class="icon-btn" data-a="eat-del" data-id="'+esc(f.id)+'" aria-label="Borrar">✕</button></div>';}).join('');
   if(d.foods.length)h+='<button class="btn soft" data-a="meal-new">⭐ Guardar como comida</button>';
   h+='</div>';
 
@@ -411,13 +423,14 @@ function openPicker(){
   pick={q:'',f:'all'};
   openSheet('<div class="grab"></div><div class="sheet-head"><h3>Agregar alimento</h3><button class="icon-btn" data-a="close" aria-label="Cerrar">✕</button></div><div class="sticky-s"><input id="pickSearch" type="search" placeholder="Buscar…" autocomplete="off"><div class="chips in" id="pickChips">'+chipsHTML('all','pfilter')+'</div></div><div id="pickList">'+foodListHTML('','all','picker')+'</div><p class="help">Valores aproximados. Tu nutriólogo define tus cantidades.</p>','tall');
 }
-function openQty(food){
-  pending={food:food,qty:1};
+function openQty(food,qty,editId){
+  qty=qty||1;pending={food:food,qty:qty,editId:editId||null};
   var h='<div class="grab"></div><h3>'+COLORS[food.color].emoji+' '+esc(food.name)+'</h3><div class="meta">'+esc(food.portion)+' · ~'+fmtNum(food.phe)+' mg Phe por porción</div>'+
-    '<div class="stepper"><button class="round" data-a="qty-minus" aria-label="Menos">−</button><div class="sval" id="qtyVal">1</div><button class="round" data-a="qty-plus" aria-label="Más">+</button></div>'+
-    '<div class="preview">porciones · Total aprox. <b id="qtyTot">'+fmtNum(food.phe)+'</b> mg</div><div class="preview" id="qtyExtra">'+qtyExtra(food,1)+'</div>';
-  if(food.color==='r')h+='<div class="note">Este alimento suele evitarse. Si tu nutriólogo te lo indicó, adelante.</div>';
-  h+='<button class="btn" data-a="qty-confirm">Agregar a hoy</button><button class="btn ghost" data-a="close">Cancelar</button>';
+    '<div class="stepper"><button class="round" data-a="qty-minus" aria-label="Menos">−</button><div class="sval" id="qtyVal">'+fmtQty(qty)+'</div><button class="round" data-a="qty-plus" aria-label="Más">+</button></div>'+
+    '<div class="preview">porciones · Total aprox. <b id="qtyTot">'+fmtNum(Math.round(food.phe*qty))+'</b> mg</div><div class="preview" id="qtyExtra">'+qtyExtra(food,qty)+'</div>';
+  if(food.color==='r'&&!editId)h+='<div class="note">Este alimento suele evitarse. Si tu nutriólogo te lo indicó, adelante.</div>';
+  h+=editId?'<button class="btn" data-a="qty-confirm">Guardar cambio</button><button class="btn soft" data-a="eat-del" data-id="'+esc(editId)+'">Quitar de hoy</button><button class="btn ghost" data-a="close">Cancelar</button>'
+    :'<button class="btn" data-a="qty-confirm">Agregar a hoy</button><button class="btn ghost" data-a="close">Cancelar</button>';
   openSheet(h);
 }
 function updateQty(){if(!pending)return;$('#qtyVal').textContent=fmtQty(pending.qty);$('#qtyTot').textContent=fmtNum(Math.round(pending.food.phe*pending.qty));var qe=$('#qtyExtra');if(qe)qe.textContent=qtyExtra(pending.food,pending.qty);}
@@ -639,7 +652,7 @@ function openSettings(){
       '<div id="kcalFields" style="'+(draftKcal?'':'display:none')+'"><label class="f" for="setKcalGoal">Meta diaria de calorías (opcional)</label><input id="setKcalGoal" inputmode="numeric" value="'+(s.kcalGoal==null?'':esc(s.kcalGoal))+'" placeholder="La define tu nutriólogo">'+
       '<label class="f" for="setFormulaKcal">Calorías por toma de fórmula</label><input id="setFormulaKcal" inputmode="numeric" value="'+(s.formulaKcal==null?'':esc(s.formulaKcal))+'" placeholder="Viene en la etiqueta"><div class="help">Se suman cada vez que marcas una toma en el checklist.</div></div></div>'+
     '<button class="btn" data-a="settings-save">Guardar cambios</button>'+
-    '<div class="sec"><label class="f">Respaldo</label><div class="help">Tus datos viven solo en este teléfono. Guarda un respaldo de vez en cuando.</div><button class="btn soft" data-a="export">Exportar respaldo</button><button class="btn soft" data-a="import">Importar respaldo</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>','tall');
+    '<div class="sec"><label class="f">Respaldo</label><div class="help">Tus datos viven solo en este teléfono. Guarda un respaldo de vez en cuando.</div>'+(state.lastBackup?'<div class="help">Último respaldo: '+fmtShort(state.lastBackup)+'</div>':'')+'<button class="btn soft" data-a="export">Exportar respaldo</button><button class="btn soft" data-a="import">Importar respaldo</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>','tall');
 }
 function saveSettings(){
   syncDraftMeds();
@@ -658,9 +671,9 @@ function saveSettings(){
 function exportData(){
   var json=JSON.stringify(Object.assign({app:'mi-guia-pku',exportado:new Date().toISOString()},state),null,2);
   var name='mi-guia-pku-respaldo-'+todayKey()+'.json';
-  function fallback(){var url=URL.createObjectURL(new Blob([json],{type:'application/json'}));var a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(url);a.remove();},2000);toast('Respaldo listo');}
+  function fallback(){var url=URL.createObjectURL(new Blob([json],{type:'application/json'}));var a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(url);a.remove();},2000);toast('Respaldo listo');markBackup();}
   try{var file=new File([json],name,{type:'application/json'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'Respaldo Mi Guía PKU'}).catch(function(e){if(!e||e.name!=='AbortError')fallback();});return;}
+    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'Respaldo Mi Guía PKU'}).then(markBackup).catch(function(e){if(!e||e.name!=='AbortError')fallback();});return;}
   }catch(e){}
   fallback();
 }
@@ -671,7 +684,7 @@ function importFile(f){
     var obj;try{obj=JSON.parse(r.result);}catch(e){toast('Ese archivo no es un respaldo válido.');return;}
     if(!obj||typeof obj!=='object'||(!obj.settings&&!obj.days)){toast('Ese archivo no es un respaldo válido.');return;}
     if(!confirm('Esto reemplazará los datos actuales con los del respaldo. ¿Continuar?'))return;
-    state=normalize(obj);save();closeSheet();render();toast('Respaldo importado ✓');
+    state=normalize(obj);state.lastBackup=todayKey();state.backupSnooze=null;save();closeSheet();render();toast('Respaldo importado ✓');
   };
   r.readAsText(f);
 }
@@ -697,11 +710,14 @@ document.addEventListener('click',function(e){
     case 'qty-plus':if(pending){pending.qty=Math.min(20,pending.qty+0.5);updateQty();}break;
     case 'qty-confirm':
       if(!pending)break;var fd=pending.food;
+      if(pending.editId){var ee=getDay(k,true).foods.filter(function(x){return x.id===pending.editId;})[0];if(ee)ee.qty=pending.qty;save();closeSheet();toast('Cambio guardado ✓');render();break;}
       getDay(k,true).foods.push({id:uid(),fid:fd.id,name:fd.name,portion:fd.portion,phe:Number(fd.phe)||0,kcal:fd.kcal!=null?fd.kcal:null,color:fd.color,qty:pending.qty,t:Date.now()});
       save();closeSheet();toast('Agregado a hoy ✓');if(tab==='hoy')render();break;
     case 'eat-del':
       d=getDay(k,true);var it=d.foods.filter(function(x){return x.id===el.dataset.id;})[0];
-      if(it&&confirm('¿Quitar “'+it.name+'” de hoy?')){d.foods=d.foods.filter(function(x){return x.id!==it.id;});save();render();}break;
+      if(it&&confirm('¿Quitar “'+it.name+'” de hoy?')){d.foods=d.foods.filter(function(x){return x.id!==it.id;});closeSheet();save();render();}break;
+    case 'eat-edit':var fe=getDay(k).foods.filter(function(x){return x.id===el.dataset.id;})[0];if(fe)openQty({fid:fe.fid,name:fe.name,portion:fe.portion,phe:Number(fe.phe)||0,kcal:foodKcal(fe),color:fe.color||'g'},fe.qty,fe.id);break;
+    case 'backup-later':state.backupSnooze=addDays(todayKey(),3);save();render();break;
     case 'toggle-dose':d=getDay(k,true);var i=+el.dataset.i;d.formula[i]=!d.formula[i];save();render();break;
     case 'toggle-med':d=getDay(k,true);d.meds[el.dataset.id]=!d.meds[el.dataset.id];save();render();break;
     case 'water-plus':d=getDay(k,true);d.water=Math.min(30,d.water+1);save();render();break;
